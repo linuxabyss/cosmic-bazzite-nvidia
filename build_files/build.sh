@@ -2,23 +2,60 @@
 
 set -ouex pipefail
 
-### Install packages
+### Update base system
+dnf5 -y update
 
-# Packages can be installed from any enabled yum repo on the image.
-# RPMfusion repos are available by default in ublue main images
-# List of rpmfusion packages can be found here:
-# https://mirrors.rpmfusion.org/mirrorlist?path=free/fedora/updates/39/x86_64/repoview/index.html&protocol=https&redirect=1
+### Install core utilities
+dnf5 install -y \
+    tmux \
+    vim \
+    wget \
+    curl \
+    git \
+    htop \
+    bash-completion
 
-# this installs a package from fedora repos
-dnf5 install -y tmux 
+### Install Cosmic Desktop
+dnf5 install -y @cosmic-desktop-environment
 
-# Use a COPR Example:
-#
-# dnf5 -y copr enable ublue-os/staging
-# dnf5 -y install package
-# Disable COPRs so they don't end up enabled on the final image:
-# dnf5 -y copr disable ublue-os/staging
+# Enable graphical target and display manager
+systemctl set-default graphical.target
+systemctl enable display-manager.service
 
-#### Example for enabling a System Unit File
+### Enable CachyOS kernel COPR
+dnf5 -y copr enable bieszczaders/kernel-cachyos
 
+# Install CachyOS kernel and headers
+dnf5 install -y kernel-cachyos kernel-cachyos-devel-matched
+
+### NVIDIA proprietary driver support
+
+# Enable RPMFusion repos if not already enabled
+dnf5 install -y \
+    https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+# Blacklist nouveau to avoid conflicts
+echo "blacklist nouveau" > /etc/modprobe.d/blacklist-nouveau.conf
+echo "options nouveau modeset=0" >> /etc/modprobe.d/blacklist-nouveau.conf
+
+# Rebuild initramfs so nouveau is disabled
+dracut --force
+
+# Install NVIDIA drivers and tools
+dnf5 install -y \
+    akmod-nvidia \
+    xorg-x11-drv-nvidia \
+    xorg-x11-drv-nvidia-cuda \
+    nvidia-settings \
+    vulkan
+
+# Ensure NVIDIA kernel modules build at boot
+systemctl enable display-manager.service
+
+### Optional: container support with Podman
+dnf5 install -y podman
 systemctl enable podman.socket
+
+### Clean up package cache
+dnf5 clean all
